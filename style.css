@@ -126,3 +126,15 @@ section .infos{
 .modal .game-over{
     display: none;
 }
+
+.game-stats {
+    text-align: center;
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.game-stats p {
+    margin: 0;
+}

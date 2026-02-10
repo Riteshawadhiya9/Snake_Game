@@ -25,8 +25,9 @@ const rows = Math.floor(board.clientHeight / blockHeight);
 
 let intervalId = null;
 let timeIntervalId = null;
-
-let food = { x: Math.floor(Math.random() * rows), y: Math.floor(Math.random() * cols) };
+let gameSpeed = 400; // Initial speed in milliseconds
+let isPaused = false;
+let directionQueue = []; // Queue to prevent spiral death
 
 const blocks = [];
 let snake = [
@@ -36,6 +37,21 @@ let snake = [
 ];
 
 let direction = "down";
+
+// Function to spawn food away from snake body
+function spawnFood() {
+    let newFood;
+    let isValidSpot = false;
+    
+    while (!isValidSpot) {
+        newFood = { x: Math.floor(Math.random() * rows), y: Math.floor(Math.random() * cols) };
+        isValidSpot = !snake.some(segment => segment.x === newFood.x && segment.y === newFood.y);
+    }
+    
+    return newFood;
+}
+
+let food = spawnFood();
 
 for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -48,6 +64,13 @@ for (let row = 0; row < rows; row++) {
 }
 
 function renderSnake() {
+    // Skip rendering if paused
+    if (isPaused) return;
+
+    // Process direction queue to prevent spiral death
+    if (directionQueue.length > 0) {
+        direction = directionQueue.shift();
+    }
 
     blocks[`${food.x}-${food.y}`].classList.add("food");
 
@@ -78,7 +101,7 @@ function renderSnake() {
     // Food Consumption logic
     if (head.x === food.x && head.y === food.y) {
         blocks[`${food.x}-${food.y}`].classList.remove("food");
-        food = { x: Math.floor(Math.random() * rows), y: Math.floor(Math.random() * cols) };
+        food = spawnFood();
         blocks[`${food.x}-${food.y}`].classList.add("food");
 
         snake.unshift(head);
@@ -89,6 +112,15 @@ function renderSnake() {
             highScore = score;
             localStorage.setItem("highScore", highScore.toString());
             highScoreElement.innerText = highScore;
+        }
+
+        // Difficulty progression - increase speed
+        if (gameSpeed > 100) {
+            gameSpeed -= 5;
+            clearInterval(intervalId);
+            intervalId = setInterval(() => {
+                renderSnake();
+            }, gameSpeed);
         }
     }
 
@@ -110,25 +142,44 @@ function renderSnake() {
 
 startBtn.addEventListener("click", () => {
     modal.style.display = "none";
+    isPaused = false;
+    directionQueue = [];
     intervalId = setInterval(() => {
         renderSnake();
-    }, 400)
+    }, gameSpeed)
     timeIntervalId = setInterval(() => {
-        let [min, sec] = time.split(":").map(Number)
-        if (sec === 59) {
-            min += 1;
-            sec = 0;
-        } else {
-            sec += 1;
+        if (!isPaused) {
+            let [min, sec] = time.split(":").map(Number)
+            if (sec === 59) {
+                min += 1;
+                sec = 0;
+            } else {
+                sec += 1;
+            }
+            min = String(min).padStart(2, '0');
+            sec = String(sec).padStart(2, '0');
+            time = `${min}:${sec}`
+            timeElement.innerText = time;
         }
-        time = `${min}:${sec}`
-        timeElement.innerText = time;
     }, 1000)
 })
 
 function endGame() {
     clearInterval(intervalId);
     clearInterval(timeIntervalId);
+    
+    // Display game over stats
+    document.querySelector("#final-score").innerText = score;
+    document.querySelector("#final-time").innerText = time;
+    
+    // Show new high score message if applicable
+    const highScoreMsg = document.querySelector("#high-score-msg");
+    if (score > parseInt(highScore)) {
+        highScoreMsg.style.display = "block";
+    } else {
+        highScoreMsg.style.display = "none";
+    }
+    
     modal.style.display = "flex";
     startGameModal.style.display = "none";
     gameOverModal.style.display = "flex";
@@ -151,8 +202,11 @@ function restartGme() {
     score = 0;
     time = `00:00`;
     direction = "down";
+    gameSpeed = 400; // Reset speed
+    isPaused = false;
+    directionQueue = [];
     snake = [{ x: 1, y: 3 }, { x: 1, y: 4 }, { x: 1, y: 5 }];
-    food = { x: Math.floor(Math.random() * rows), y: Math.floor(Math.random() * cols) };
+    food = spawnFood();
 
     // Update UI
     scoreElement.innerText = score;
@@ -161,30 +215,41 @@ function restartGme() {
 
     // Start new game
     modal.style.display = "none";
-    intervalId = setInterval(() => { renderSnake(); }, 400);
+    intervalId = setInterval(() => { renderSnake(); }, gameSpeed);
     timeIntervalId = setInterval(() => {
-        let [min, sec] = time.split(":").map(Number)
-        if (sec === 59) {
-            min += 1;
-            sec = 0;
-        } else {
-            sec += 1;
+        if (!isPaused) {
+            let [min, sec] = time.split(":").map(Number)
+            if (sec === 59) {
+                min += 1;
+                sec = 0;
+            } else {
+                sec += 1;
+            }
+            min = String(min).padStart(2, '0');
+            sec = String(sec).padStart(2, '0');
+            time = `${min}:${sec}`
+            timeElement.innerText = time;
         }
-        time = `${min}:${sec}`
-        timeElement.innerText = time;
     }, 1000);
 }
 
 
 addEventListener("keydown", (evt) => {
-    // console.log(evt.key);
-    if (evt.key === "ArrowRight" && direction !== "left") {
-        direction = "right";
-    } else if (evt.key === "ArrowLeft" && direction !== "right") {
-        direction = "left";
-    } else if (evt.key === "ArrowUp" && direction !== "down") {
-        direction = "up";
-    } else if (evt.key === "ArrowDown" && direction !== "up") {
-        direction = "down";
+    // Pause/Resume with spacebar
+    if (evt.key === " ") {
+        evt.preventDefault();
+        isPaused = !isPaused;
+        return;
+    }
+
+    // Direction controls with queue system to prevent spiral death
+    if (evt.key === "ArrowRight" && direction !== "left" && directionQueue[directionQueue.length - 1] !== "right") {
+        directionQueue.push("right");
+    } else if (evt.key === "ArrowLeft" && direction !== "right" && directionQueue[directionQueue.length - 1] !== "left") {
+        directionQueue.push("left");
+    } else if (evt.key === "ArrowUp" && direction !== "down" && directionQueue[directionQueue.length - 1] !== "up") {
+        directionQueue.push("up");
+    } else if (evt.key === "ArrowDown" && direction !== "up" && directionQueue[directionQueue.length - 1] !== "down") {
+        directionQueue.push("down");
     }
 })
